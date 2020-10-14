@@ -26,7 +26,8 @@ func init() {
 }
 
 func connect(user *chatpb.User) error {
-	var streamerror error
+	var streamError error
+	fmt.Println(user)
 
 	stream, err := client.CreateStream(context.Background(), &chatpb.Connect{
 		User:   user,
@@ -34,7 +35,7 @@ func connect(user *chatpb.User) error {
 	})
 
 	if err != nil {
-		log.Fatalf("Connection filed: %v", err)
+		return fmt.Errorf("Connect failed: %v", err)
 	}
 
 	wait.Add(1)
@@ -45,19 +46,19 @@ func connect(user *chatpb.User) error {
 			msg, err := str.Recv()
 
 			if err != nil {
-				log.Fatalf("Failed recieving msg from Server: %v", err)
+				streamError = fmt.Errorf("Error reading message: %v", err)
 				break
 			}
 
-			fmt.Printf("%v : %s\n", msg.Id, msg.Message)
+			fmt.Printf("%v : %s\n", msg.User.DisplayName, msg.Message)
 		}
 	}(stream)
 
-	return streamerror
+	return streamError
 }
 
 func main() {
-	fmt.Println("Hello, I'm a client")
+	fmt.Println("New client is started")
 
 	timestamp := time.Now()
 	done := make(chan int)
@@ -66,18 +67,18 @@ func main() {
 	flag.Parse()
 
 	id := sha256.Sum256([]byte(timestamp.String() + *name))
-
-	cc, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
-	if err != nil {
-		log.Fatalf("Could not connect: %v", err)
-	}
-	defer cc.Close()
-
-	client = chatpb.NewBroadcastClient(cc)
 	user := &chatpb.User{
 		Id:          hex.EncodeToString(id[:]),
 		DisplayName: *name,
 	}
+
+	conn, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
+	if err != nil {
+		log.Fatalf("Could not connect: %v", err)
+	}
+	defer conn.Close()
+
+	client = chatpb.NewBroadcastClient(conn)
 
 	connect(user)
 
@@ -86,11 +87,15 @@ func main() {
 		defer wait.Done()
 
 		scanner := bufio.NewScanner(os.Stdin)
+
+		ts := time.Now()
+		msgID := sha256.Sum256([]byte(ts.String() + *name))
 		for scanner.Scan() {
 			msg := &chatpb.Message{
-				Id:        user.Id,
+				Id:        hex.EncodeToString(msgID[:]),
+				User:      user,
 				Message:   scanner.Text(),
-				Timestamp: timestamp.String(),
+				Timestamp: ts.String(),
 			}
 
 			_, err := client.BroadcastMessage(context.Background(), msg)
