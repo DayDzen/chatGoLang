@@ -10,6 +10,7 @@ import (
 	"github.com/DayDzen/chatGoLang/chat/chatpb"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/grpclog"
 )
 
 // Server is structure for creating server
@@ -44,6 +45,7 @@ func (s *Server) BroadcastMessage(ctx context.Context, msg *chatpb.Message) (*ch
 	done := make(chan int)
 
 	for _, conn := range s.connection {
+		log.Println(conn.id)
 		wait.Add(1)
 
 		go func(msg *chatpb.Message, conn *Connection) {
@@ -51,10 +53,10 @@ func (s *Server) BroadcastMessage(ctx context.Context, msg *chatpb.Message) (*ch
 
 			if conn.active {
 				err := conn.stream.Send(msg)
-				log.Printf("Sending message to: %s", conn.stream)
+				grpclog.Infof("Sending message %v to user %v", msg.Id, conn.id)
 
 				if err != nil {
-					log.Fatalf("Error with stream: %s - Error: %v", conn.stream, err)
+					grpclog.Errorf("Error with stream: %v - Error: %v", conn.stream, err)
 					conn.active = false
 					conn.err <- err
 				}
