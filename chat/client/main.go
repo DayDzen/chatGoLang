@@ -50,7 +50,7 @@ func connect(user *chatpb.User) error {
 				break
 			}
 
-			fmt.Printf("%v : %s\n", msg.User.DisplayName, msg.Message)
+			fmt.Printf("%v : %s\n", msg.User.Name, msg.Content)
 		}
 	}(stream)
 
@@ -63,13 +63,22 @@ func main() {
 	timestamp := time.Now()
 	done := make(chan int)
 
-	name := flag.String("N", "Anon", "The name of the user")
+	userName := flag.String("N", "Anon", "The name of the user")
+	chatName := flag.String("C", "General", "The chat name")
 	flag.Parse()
 
-	id := sha256.Sum256([]byte(timestamp.String() + *name))
+	userID := sha256.Sum256([]byte(timestamp.String() + *userName))
+	chatID := sha256.Sum256([]byte(*chatName))
+
+	chat := &chatpb.Chat{
+		Id:   hex.EncodeToString(chatID[:]),
+		Name: *chatName,
+	}
+
 	user := &chatpb.User{
-		Id:          hex.EncodeToString(id[:]),
-		DisplayName: *name,
+		Id:   hex.EncodeToString(userID[:]),
+		Name: *userName,
+		Chat: chat,
 	}
 
 	conn, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
@@ -89,12 +98,13 @@ func main() {
 		scanner := bufio.NewScanner(os.Stdin)
 
 		ts := time.Now()
-		msgID := sha256.Sum256([]byte(ts.String() + *name))
+		msgID := sha256.Sum256([]byte(ts.String() + *userName))
+
 		for scanner.Scan() {
 			msg := &chatpb.Message{
 				Id:        hex.EncodeToString(msgID[:]),
 				User:      user,
-				Message:   scanner.Text(),
+				Content:   scanner.Text(),
 				Timestamp: ts.String(),
 			}
 

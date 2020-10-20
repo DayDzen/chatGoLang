@@ -21,7 +21,8 @@ type Server struct {
 // Connection is structure for creating new connections
 type Connection struct {
 	stream chatpb.Broadcast_CreateStreamServer
-	id     string
+	userID string
+	chatID string
 	active bool
 	err    chan error
 }
@@ -30,7 +31,8 @@ type Connection struct {
 func (s *Server) CreateStream(pconn *chatpb.Connect, stream chatpb.Broadcast_CreateStreamServer) error {
 	conn := &Connection{
 		stream: stream,
-		id:     pconn.User.Id,
+		userID: pconn.GetUser().GetId(),
+		chatID: pconn.GetUser().GetChat().GetId(),
 		active: true,
 		err:    make(chan error),
 	}
@@ -45,20 +47,24 @@ func (s *Server) BroadcastMessage(ctx context.Context, msg *chatpb.Message) (*ch
 	done := make(chan int)
 
 	for _, conn := range s.connection {
-		log.Println(conn.id)
 		wait.Add(1)
 
 		go func(msg *chatpb.Message, conn *Connection) {
 			defer wait.Done()
 
 			if conn.active {
-				err := conn.stream.Send(msg)
-				grpclog.Infof("Sending message %v to user %v", msg.Id, conn.id)
+				if msg.GetUser().GetChat().GetId() == conn.chatID {
+					err := conn.stream.Send(msg)
+					log.Printf("User's ID is: %v\n", conn.userID)
+					log.Printf("Chat's ID is: %v\n", conn.chatID)
+					log.Printf("Msg is: %v\n\n", msg.GetContent())
+					// grpclog.Infof("Sending message %v by user %v", msg.GetId(), conn.chatID)
 
-				if err != nil {
-					grpclog.Errorf("Error with stream: %v - Error: %v", conn.stream, err)
-					conn.active = false
-					conn.err <- err
+					if err != nil {
+						grpclog.Errorf("Error with stream: %v - Error: %v", conn.stream, err)
+						conn.active = false
+						conn.err <- err
+					}
 				}
 			}
 		}(msg, conn)
